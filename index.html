@@ -1,0 +1,215 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Survival Demo</title>
+<style>
+body { margin:0; overflow:hidden; font-family:Arial; background:black; }
+
+#menu {
+ position:fixed;
+ inset:0;
+ display:flex;
+ flex-direction:column;
+ align-items:center;
+ justify-content:center;
+ color:white;
+ background:#000;
+}
+
+button {
+ padding:10px 20px;
+ font-size:16px;
+ margin:5px;
+ cursor:pointer;
+}
+
+#hud {
+ position:fixed;
+ top:10px; left:10px;
+ color:white;
+ font-size:14px;
+ background:rgba(0,0,0,0.4);
+ padding:10px;
+}
+</style>
+</head>
+<body>
+
+<div id="menu">
+  <h1>🌍 SURVIVAL DEMO</h1>
+  <button onclick="startGame()">Play</button>
+</div>
+
+<div id="hud">
+HP: <span id="hp">100</span><br>
+Enemies: <span id="enemies">0</span>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.160.0/examples/js/controls/PointerLockControls.js"></script>
+
+<script>
+
+let state = "menu";
+
+let scene = new THREE.Scene();
+scene.fog = new THREE.Fog(0x000000, 10, 200);
+
+let camera = new THREE.PerspectiveCamera(75, innerWidth/innerHeight, 0.1, 1000);
+let renderer = new THREE.WebGLRenderer();
+renderer.setSize(innerWidth, innerHeight);
+document.body.appendChild(renderer.domElement);
+
+// light
+let light = new THREE.DirectionalLight(0xffffff, 1);
+light.position.set(10,20,10);
+scene.add(light);
+
+// ground
+let ground = new THREE.Mesh(
+ new THREE.PlaneGeometry(500,500),
+ new THREE.MeshStandardMaterial({color:0x1a1a1a})
+);
+ground.rotation.x = -Math.PI/2;
+scene.add(ground);
+
+// player
+let controls = new THREE.PointerLockControls(camera, document.body);
+scene.add(controls.getObject());
+controls.getObject().position.y = 2;
+
+// enemies
+let enemies = [];
+let hp = 100;
+
+function spawnEnemy(){
+ let e = new THREE.Mesh(
+  new THREE.BoxGeometry(2,2,2),
+  new THREE.MeshStandardMaterial({color:0xff4444})
+ );
+
+ e.position.set((Math.random()-0.5)*100,1,(Math.random()-0.5)*100);
+ scene.add(e);
+ enemies.push({mesh:e, hp:50});
+}
+
+// input
+let keys = {};
+document.addEventListener("keydown", e => keys[e.key.toLowerCase()] = true);
+document.addEventListener("keyup", e => keys[e.key.toLowerCase()] = false);
+
+// shoot
+document.addEventListener("mousedown", () => {
+ if(state !== "playing") return;
+
+ let dir = new THREE.Vector3();
+ camera.getWorldDirection(dir);
+
+ let ray = new THREE.Raycaster(camera.position, dir);
+ let hits = ray.intersectObjects(enemies.map(e => e.mesh));
+
+ if(hits.length){
+  enemies.forEach(e => {
+   if(e.mesh === hits[0].object){
+    e.hp -= 25;
+    e.mesh.material.color.set(0xffffff);
+
+    setTimeout(() => {
+     e.mesh.material.color.set(0xff4444);
+    }, 100);
+   }
+  });
+ }
+});
+
+// movement
+function move(){
+ let speed = 0.4;
+
+ let dir = new THREE.Vector3();
+ camera.getWorldDirection(dir);
+ dir.y = 0;
+ dir.normalize();
+
+ let right = new THREE.Vector3(dir.z, 0, -dir.x);
+
+ if(keys["w"]) controls.getObject().position.addScaledVector(dir, speed);
+ if(keys["s"]) controls.getObject().position.addScaledVector(dir, -speed);
+ if(keys["a"]) controls.getObject().position.addScaledVector(right, -speed);
+ if(keys["d"]) controls.getObject().position.addScaledVector(right, speed);
+}
+
+// enemy AI
+function ai(){
+ enemies.forEach(e => {
+  let p = controls.getObject().position;
+  let d = p.clone().sub(e.mesh.position);
+  let dist = d.length();
+
+  if(dist < 30){
+   d.normalize();
+   e.mesh.position.addScaledVector(d, 0.1);
+  }
+
+  if(dist < 2){
+   hp -= 0.3;
+  }
+ });
+}
+
+// cleanup dead enemies
+function cleanup(){
+ enemies = enemies.filter(e => {
+  if(e.hp <= 0){
+   scene.remove(e.mesh);
+   return false;
+  }
+  return true;
+ });
+}
+
+// start game
+function startGame(){
+ state = "playing";
+ document.getElementById("menu").style.display = "none";
+ controls.lock();
+
+ for(let i=0;i<10;i++) spawnEnemy();
+}
+
+// UI
+function updateUI(){
+ document.getElementById("hp").innerText = Math.floor(hp);
+ document.getElementById("enemies").innerText = enemies.length;
+}
+
+// loop
+function loop(){
+ requestAnimationFrame(loop);
+
+ if(state === "playing"){
+  move();
+  ai();
+  cleanup();
+  updateUI();
+
+  if(hp <= 0){
+   location.reload();
+  }
+ }
+
+ renderer.render(scene, camera);
+}
+loop();
+
+window.addEventListener("resize", () => {
+ camera.aspect = innerWidth/innerHeight;
+ camera.updateProjectionMatrix();
+ renderer.setSize(innerWidth, innerHeight);
+});
+
+</script>
+
+</body>
+</html>
